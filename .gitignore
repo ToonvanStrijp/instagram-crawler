@@ -1,0 +1,5 @@
+node_modules
+images
+data.json
+key_*.json
+.idea
