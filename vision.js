@@ -1,17 +1,28 @@
 const vision = require('@google-cloud/vision');
 const fs = require('fs');
 const lodash = require('lodash');
-
+const bluebird = require('bluebird');
 const batchPromises = require('batch-promises');
 
-const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+const data = JSON.parse(fs.readFileSync('data.json', 'utf8')).filter(post => {
+    return fs.existsSync(`./images/${post.id}.jpg`);
+});
+
+
+const visionDir = './vision';
+
+if (!fs.existsSync(visionDir)){
+    fs.mkdirSync(visionDir);
+}
+
+function round(num) {
+    return Math.round(num * 100) / 100;
+}
 
 const client = new vision.ImageAnnotatorClient({
     keyFilename: 'key_ds41C-16ec549b66f1.json',
     projectId: 'ds41c-232407'
 });
-
-console.log(vision.types.Feature.Type.LABEL_DETECTION);
 
 const features = [
     {type: 'LABEL_DETECTION'},
@@ -28,28 +39,54 @@ const features = [
 ];
 
 
+let count = 0;
+const total = data.length;
+const steps = 16;
 
-// batchPromises(20, data, (post, i) => new Promise((resolve, reject) => {
-//     console.log(post, i);
-//     resolve();
-// })).then(results => {
-//     console.log('done');
-// });
+batchPromises(10, lodash.chunk(data, steps), (posts, i) => new Promise((resolve, reject) => {
+    console.log(`sending ${steps} images to google vision...`);
+    const requests = posts
+        .map(post => {
+            return {
+                id: post.id,
+                image: {content: Buffer.from(fs.readFileSync(`./images/${post.id}.jpg`)).toString('base64') },
+                features: features
+            }
+        });
 
-// client
-//     .batchAnnotateImages({
-//         image: {source: { filename: './images/341200254171520867.jpg' }},
-//         features: features
-//     })
-//     .then(results => {
-//         const labels = results[0].labelAnnotations;
+    client
+        .batchAnnotateImages({requests: requests})
+        .then(response => {
+            count += count + steps > total ? total - count : steps;
+            const results = response[0].responses.map((value, index) => {
+                return {
+                    id: requests[index].id,
+                    data: value
+                }
+            });
 
-        // console.log(labels);
-        // console.log('Labels:');
-        // labels.forEach(label => console.log(label.description));
-        //
-        // console.log(results[0]);
-    // })
-    // .catch(err => {
-    //     console.error('ERROR:', err);
-    // });
+            console.log(`writing ${results.length} responses to json...`);
+
+            bluebird.all(results.map(result => {
+                return new Promise((res, rej) => {
+                    const json = JSON.stringify(result.data);
+                    fs.writeFile(visionDir+`/${result.id}.json`, json, 'utf8', (err) => {
+                        if(err) rej(`failed to save: ${result.id}`);
+                        console.log(result.id+' saved');
+                        res();
+                    });
+                });
+            })).then(() => {
+                console.log(`progress (${count}/${total} - ${round((100/total)*count)}%)`);
+                resolve();
+            }).catch(err => {
+                console.log(err);
+                reject(err);
+            })
+        })
+        .catch(err => {
+            console.error('ERROR:', err);
+        });
+})).then(results => {
+    console.log('done');
+});

@@ -22,8 +22,18 @@ function askQuestion(query) {
     }))
 }
 
+function waitForInstagramHome() {
+    return new Promise(resolve => {
+        driver.findElement(By.css('span[aria-label="Profile"]')).then(element => {
+            resolve();
+        }).catch(err => {
+            waitForInstagramHome().then(resolve);
+        });
+    });
+}
+
 function createUrl(next, max) {
-    const variables = `{"id":"1025092660","first":${max || 50}, "after": "${next}"}`;
+    const variables = `{"id":"224081233","first":${max || 50}, "after": "${next}"}`;
     return 'https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables='+querystring.escape(variables);
 }
 
@@ -48,7 +58,6 @@ function crawlPage(url, callback) {
                     return;
                 }
 
-                const totalItems = response.data.location.edge_location_to_media.count;
                 const hasNextPage = response.data.location.edge_location_to_media.page_info.has_next_page;
 
                 const items = response.data.location.edge_location_to_media.edges.map(edge => edge.node);
@@ -56,12 +65,11 @@ function crawlPage(url, callback) {
 
                 console.log(items.length+' added');
 
-                console.log(`progress... (${data.length}/${totalItems}) ${(100/totalItems)*data.length}`);
+                console.log(`progress... (${data.length})`);
 
                 if(hasNextPage) {
                     const nextCursor = response.data.location.edge_location_to_media.page_info.end_cursor;
-                    const amountToGet = totalItems - data.length;
-                    crawlPage(createUrl(nextCursor, amountToGet <= 50 ? amountToGet : 50), callback);
+                    crawlPage(createUrl(nextCursor, 50), callback);
                 }else{
                     console.log(response.data.location.edge_location_to_media.page_info);
                     callback();
@@ -72,7 +80,11 @@ function crawlPage(url, callback) {
 
 
 driver.get('https://www.instagram.com/accounts/login/')
-    .then(() => askQuestion('login to instagram and press enter'))
+    .then(() => {
+      return new Promise((resolve, reject) => {
+          waitForInstagramHome().then(resolve).catch(reject);
+      })
+    })
     .then(() =>  {
         return new Promise((resolve, reject) => {
             crawlPage('https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables=%7B%22id%22%3A%22224081233%22%2C%22first%22%3A50%7D', () => {
@@ -92,6 +104,6 @@ driver.get('https://www.instagram.com/accounts/login/')
     })
     .then(() => driver.close())
     .catch(err => {
-        console.log(err);
+        console.log('error:', err);
         driver.close();
     });
