@@ -1,6 +1,5 @@
 node_modules
-images
-vision
-data.json
 key_*.json
 .idea
+chrome
+data

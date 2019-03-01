@@ -1,26 +1,25 @@
 require('chromedriver');
-const readline = require('readline');
-var webdriver = require('selenium-webdriver');
+const webdriver = require('selenium-webdriver');
 const querystring = require('querystring');
-const {Builder, By, Key, until} = require('selenium-webdriver');
-var fs = require('fs');
-var driver = new webdriver.Builder()
+const {By} = require('selenium-webdriver');
+const fs = require('fs');
+const rimraf = require('rimraf');
+const lodash = require('lodash');
+const chrome = require('selenium-webdriver/chrome');
+
+const chomeDir = __dirname+"/chrome";
+const o = new chrome.Options();
+o.addArguments("--user-data-dir="+chomeDir);
+const driver = new webdriver.Builder()
     .forBrowser('chrome')
+    .setChromeOptions(o)
     .build();
 
 const data = [];
 
-function askQuestion(query) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise(resolve => rl.question(query, ans => {
-        rl.close();
-        resolve(ans);
-    }))
-}
+let root_dir = null;
+let location_id = null;
+let location_name = null;
 
 function waitForInstagramHome() {
     return new Promise(resolve => {
@@ -32,8 +31,68 @@ function waitForInstagramHome() {
     });
 }
 
+function waitForAlert() {
+   return new Promise((resolve, reject) => {
+       driver.switchTo().alert().then(() => {
+           waitForAlert().then(resolve);
+       }).catch(err => {
+           resolve();
+       })
+   });
+}
+
+function waitForLocationUrl() {
+    return new Promise((resolve, reject) => {
+        driver.getCurrentUrl().then(url => {
+            const parts = url.substring(url.length, url.indexOf('explore/locations') + 18).split('/');
+            if(url.indexOf('explore/locations') !== -1 && location_id != parts[0] && location_name != parts[1]){
+                location_id = parts[0];
+                location_name = parts[1];
+                resolve();
+            }else{
+                setTimeout(() => {
+                    waitForLocationUrl().then(resolve);
+                }, 1000);
+            }
+        }).catch(err => {
+            console.log(err);
+            setTimeout(() => {
+                waitForLocationUrl().then(resolve);
+            }, 1000);
+        });
+    })
+}
+
+function waitForLocation() {
+    return new Promise((resolve, reject) => {
+        waitForLocationUrl()
+            .then(() => driver.executeScript(`if(confirm("wanna crawl ${location_name}?")){ window.crawl = true; }`))
+            .then(() => waitForAlert())
+            .then(() => driver.executeScript('return window.crawl'))
+            .then(answer => {
+                if(answer) {
+                    if(process.send) {
+                        process.send({location_id: location_id, location_name: location_name});
+                    }
+
+                    root_dir = `./data/${location_id}`;
+
+                    rimraf(root_dir, () => {
+                        if (!fs.existsSync(root_dir)) {
+                            fs.mkdirSync(root_dir, {recursive: true});
+                        }
+
+                        resolve();
+                    });
+                }else{
+                    waitForLocation().then(resolve);
+                }
+            })
+    })
+}
+
 function createUrl(next, max) {
-    const variables = `{"id":"224081233","first":${max || 50}, "after": "${next}"}`;
+    const variables = `{"id":"${location_id}","first":${max || 50}, "after": "${next}"}`;
     return 'https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables='+querystring.escape(variables);
 }
 
@@ -63,6 +122,17 @@ function crawlPage(url, callback) {
                 const items = response.data.location.edge_location_to_media.edges.map(edge => edge.node);
                 data.push(...items);
 
+                if(!fs.existsSync(root_dir+`/location.json`)){
+                    const location  = lodash.cloneDeep(response.data.location.edge_location_to_media);
+                    delete location.edges;
+                    delete location.page_info;
+                    fs.writeFile(root_dir+'/location.json', JSON.stringify(location), 'utf8', (err) => {
+                        if(err) reject(err);
+                        console.log('location.json created');
+                    });
+                }
+
+
                 console.log(items.length+' added');
 
                 console.log(`progress... (${data.length})`);
@@ -78,16 +148,12 @@ function crawlPage(url, callback) {
     });
 }
 
-
-driver.get('https://www.instagram.com/accounts/login/')
-    .then(() => {
-      return new Promise((resolve, reject) => {
-          waitForInstagramHome().then(resolve).catch(reject);
-      })
-    })
+driver.get('https://www.instagram.com/accounts/edit/')
+    .then(() => waitForInstagramHome())
+    .then(() => waitForLocation())
     .then(() =>  {
         return new Promise((resolve, reject) => {
-            crawlPage('https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables=%7B%22id%22%3A%22224081233%22%2C%22first%22%3A50%7D', () => {
+            crawlPage(`https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables=%7B%22id%22%3A%22${location_id}%22%2C%22first%22%3A50%7D`, () => {
                 resolve();
             });
         });
@@ -95,7 +161,8 @@ driver.get('https://www.instagram.com/accounts/login/')
     .then(() => {
         return new Promise((resolve, reject) => {
             const json = JSON.stringify(data);
-            fs.writeFile('data.json', json, 'utf8', (err) => {
+
+            fs.writeFile(root_dir+'/data.json', json, 'utf8', (err) => {
                 if(err) reject(err);
                 console.log('done '+data.length+' items crawled');
                 resolve();

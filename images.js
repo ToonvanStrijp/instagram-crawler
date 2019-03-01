@@ -1,13 +1,18 @@
 const fs = require('fs');
 const batchPromises = require('batch-promises');
 const request = require('request');
+const program = require('commander');
 
-const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+program
+    .option('-r, --root [path]', 'root dir')
+    .parse(process.argv);
 
-const imageDir = './images';
+const data = JSON.parse(fs.readFileSync(program.root+'/data.json', 'utf8'));
+
+const imageDir = program.root+'/images';
 
 if (!fs.existsSync(imageDir)){
-    fs.mkdirSync(imageDir);
+    fs.mkdirSync(imageDir, {recursive: true});
 }
 
 batchPromises(50, data, post => new Promise((resolve, reject) => {
@@ -19,7 +24,7 @@ batchPromises(50, data, post => new Promise((resolve, reject) => {
                 console.log('failed: '+post.id);
                 resolve();
             }else {
-                req.pipe(fs.createWriteStream(`./images/${post.id}.jpg`)).on('close', () => {
+                req.pipe(fs.createWriteStream(program.root+`/images/${post.id}.jpg`)).on('close', () => {
                     console.log('done: '+post.id);
                     resolve();
                 });

@@ -4,15 +4,22 @@ const lodash = require('lodash');
 const bluebird = require('bluebird');
 const batchPromises = require('batch-promises');
 
-const data = JSON.parse(fs.readFileSync('data.json', 'utf8')).filter(post => {
-    return fs.existsSync(`./images/${post.id}.jpg`);
+const program = require('commander');
+
+program
+    .option('-r, --root [path]', 'root dir')
+    .parse(process.argv);
+
+
+const data = JSON.parse(fs.readFileSync(program.root+'/data.json', 'utf8')).filter(post => {
+    return fs.existsSync(program.root+`/images/${post.id}.jpg`);
 });
 
 
-const visionDir = './vision';
+const visionDir = program.root+'/vision';
 
 if (!fs.existsSync(visionDir)){
-    fs.mkdirSync(visionDir);
+    fs.mkdirSync(visionDir, {recursive: true});
 }
 
 function round(num) {
@@ -49,7 +56,7 @@ batchPromises(10, lodash.chunk(data, steps), (posts, i) => new Promise((resolve,
         .map(post => {
             return {
                 id: post.id,
-                image: {content: Buffer.from(fs.readFileSync(`./images/${post.id}.jpg`)).toString('base64') },
+                image: {content: Buffer.from(fs.readFileSync(program.root+`/images/${post.id}.jpg`)).toString('base64') },
                 features: features
             }
         });

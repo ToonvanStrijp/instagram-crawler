@@ -1,8 +1,15 @@
-const spawn = require('child_process').spawn;
+const fork = require('child_process').fork;
+const path = require('path');
+
+const options = {
+    stdio: [ 'pipe', 'pipe', 'pipe', 'ipc' ]
+};
+
+const args = [];
 
 async function runFile(file) {
     return new Promise((resolve, reject) => {
-        const command = spawn('node', [file]);
+        const command = fork(path.resolve(file), args, options);
 
         command.stdout.on('data', function (data) {
             process.stdout.write(data);
@@ -10,6 +17,11 @@ async function runFile(file) {
 
         command.stderr.on('data', function (data) {
             process.stdout.write(data);
+        });
+
+        command.on('message', data => {
+            args.push('-r');
+            args.push(`./data/${data.location_id}`);
         });
 
         command.on('exit', (code) => {

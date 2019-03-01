@@ -2,8 +2,15 @@ const MongoClient = require('mongodb').MongoClient;
 const url = "mongodb://localhost:27017/";
 const fs = require('fs');
 const bluebird = require('bluebird');
+const program = require('commander');
+
+program
+    .option('-r, --root [path]', 'root dir')
+    .parse(process.argv);
+
+const data = JSON.parse(fs.readFileSync(program.root+'/data.json', 'utf8'));
+
 let db = null;
-const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
 
 bluebird.all(data.map(post => {
     return new Promise((resolve, reject) => {
@@ -46,8 +53,8 @@ function importData(dbo) {
     const collection = dbo.collection('posts');
     return bluebird.all(data.map(post => {
         return new Promise(resolve => {
-            if(fs.existsSync(`./vision/${post.id}.json`)) {
-                post.vision = JSON.parse(fs.readFileSync(`./vision/${post.id}.json`, 'utf8'));
+            if(fs.existsSync(program.root+`/vision/${post.id}.json`)) {
+                post.vision = JSON.parse(fs.readFileSync(program.root+`/vision/${post.id}.json`, 'utf8'));
             }
             resolve(post);
         })
