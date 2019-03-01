@@ -20,6 +20,16 @@ bluebird.all(data.map(post => {
     });
 }));
 
+function send(data) {
+    if(process.send) {
+        process.send(data);
+    }
+}
+
+function round(num) {
+    return Math.round(num * 100) / 100;
+}
+
 function connectDatabase() {
     return new Promise((resolve, reject) => {
         MongoClient.connect(url, function(err, connection) {
@@ -36,6 +46,7 @@ function createCollections(dbo, collection) {
         dbo.createCollection(collection, function(err, res) {
             if (err) reject(err);
             console.log(`Collection ${collection} created`);
+            send(`Collection ${collection} created`);
             resolve(dbo);
         });
     })
@@ -51,6 +62,7 @@ function importLocation(dbo) {
             dbo.collection('locations').insertOne(location, function(err, res) {
                 if (err) reject(err);
                 console.log(`location ${location.id} inserted`);
+                send(`location ${location.id} inserted`);
                 resolve({dbo: dbo, locationId: res.insertedId});
             });
         });
@@ -72,6 +84,8 @@ function importData(dbo, locationId) {
             resolve(post);
         })
     })).then(posts => {
+        let count = 0;
+        const total = posts.length;
         return bluebird.all(posts.map(post => {
             return new Promise((resolve, reject) => {
                 collection.deleteOne({id: post.id}, function(err, obj) {
@@ -79,6 +93,8 @@ function importData(dbo, locationId) {
                     collection.insertOne(post, function(err, res) {
                         if (err) reject(err);
                         console.log(`post ${post.id} inserted`);
+                        count++;
+                        send({progress: `saving ${round((100/total)*count)}%`});
                         resolve();
                     });
                 });

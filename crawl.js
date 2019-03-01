@@ -21,11 +21,18 @@ let root_dir = null;
 let location_id = null;
 let location_name = null;
 
+function errorHandler(err) {
+    if(err.hasOwnProperty('name') && err.name == 'WebDriverError' && err.hasOwnProperty('message') && err.message.indexOf('chrome not reachable') !== -1) {
+        process.exit(1);
+    }
+}
+
 function waitForInstagramHome() {
     return new Promise(resolve => {
         driver.findElement(By.css('span[aria-label="Profile"]')).then(element => {
             resolve();
         }).catch(err => {
+            errorHandler(err);
             waitForInstagramHome().then(resolve);
         });
     });
@@ -36,6 +43,7 @@ function waitForAlert() {
        driver.switchTo().alert().then(() => {
            waitForAlert().then(resolve);
        }).catch(err => {
+           errorHandler(err);
            resolve();
        })
    });
@@ -55,6 +63,7 @@ function waitForLocationUrl() {
                 }, 1000);
             }
         }).catch(err => {
+            errorHandler(err);
             console.log(err);
             setTimeout(() => {
                 waitForLocationUrl().then(resolve);
@@ -136,6 +145,10 @@ function crawlPage(url) {
                 console.log(items.length+' added');
 
                 console.log(`progress... (${data.length})`);
+
+                if(process.send) {
+                    process.send({progress: `${data.length} items collected`});
+                }
 
                 if(hasNextPage) {
                     const nextCursor = response.data.location.edge_location_to_media.page_info.end_cursor;

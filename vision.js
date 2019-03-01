@@ -48,52 +48,60 @@ const features = [
 
 let count = 0;
 const total = data.length;
-const steps = 16;
+const steps = 10;
 
-batchPromises(10, lodash.chunk(data, steps), (posts, i) => new Promise((resolve, reject) => {
-    console.log(`sending ${steps} images to google vision...`);
-    const requests = posts
-        .map(post => {
-            return {
-                id: post.id,
-                image: {content: Buffer.from(fs.readFileSync(program.root+`/images/${post.id}.jpg`)).toString('base64') },
-                features: features
-            }
-        });
-
-    client
-        .batchAnnotateImages({requests: requests})
-        .then(response => {
-            count += count + steps > total ? total - count : steps;
-            const results = response[0].responses.map((value, index) => {
+function processPosts(posts) {
+    return new Promise((resolve, reject) => {
+        const requests = posts
+            .map(post => {
                 return {
-                    id: requests[index].id,
-                    data: value
+                    id: post.id,
+                    image: {content: Buffer.from(fs.readFileSync(program.root+`/images/${post.id}.jpg`)).toString('base64') },
+                    features: features
                 }
             });
 
-            console.log(`writing ${results.length} responses to json...`);
-
-            bluebird.all(results.map(result => {
-                return new Promise((res, rej) => {
-                    const json = JSON.stringify(result.data);
-                    fs.writeFile(visionDir+`/${result.id}.json`, json, 'utf8', (err) => {
-                        if(err) rej(`failed to save: ${result.id}`);
-                        console.log(result.id+' saved');
-                        res();
-                    });
+        client
+            .batchAnnotateImages({requests: requests})
+            .then(response => {
+                count += count + steps > total ? total - count : steps;
+                const results = response[0].responses.map((value, index) => {
+                    return {
+                        id: requests[index].id,
+                        data: value
+                    }
                 });
-            })).then(() => {
-                console.log(`progress (${count}/${total} - ${round((100/total)*count)}%)`);
-                resolve();
-            }).catch(err => {
-                console.log(err);
-                reject(err);
+
+                bluebird.all(results.map(result => {
+                    return new Promise((res, rej) => {
+                        const json = JSON.stringify(result.data);
+                        fs.writeFile(visionDir+`/${result.id}.json`, json, 'utf8', (err) => {
+                            if(err) rej(`failed to save: ${result.id}`);
+                            console.log(result.id+' saved');
+                            res();
+                        });
+                    });
+                })).then(() => {
+                    console.log(`progress (${count}/${total} - ${round((100/total)*count)}%)`);
+
+                    if(process.send){
+                        process.send({progress: `${round((100/total)*count)}%`})
+                    }
+
+                    resolve();
+                }).catch(err => {
+                    console.log(err);
+                    console.log('retrying...');
+                    processPosts(posts).then(resolve).catch(reject);
+                })
             })
-        })
-        .catch(err => {
-            console.error('ERROR:', err);
-        });
-})).then(results => {
+            .catch(err => {
+                console.error(err);
+                console.log('retrying...');
+                processPosts(posts).then(resolve).catch(reject);
+            });
+    });
+}
+batchPromises(20, lodash.chunk(data, steps), posts => processPosts(posts)).then(results => {
     console.log('done');
 });
