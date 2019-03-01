@@ -164,17 +164,7 @@ function saveData(){
 driver.get('https://www.instagram.com/accounts/edit/')
     .then(() => waitForInstagramHome())
     .then(() => waitForLocation())
-    .then(() =>  {
-        return new Promise((resolve, reject) => {
-            crawlPage(`https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables=%7B%22id%22%3A%22${location_id}%22%2C%22first%22%3A50%7D`)
-                .then(() => {
-                    resolve();
-                })
-                .catch(() => {
-                    resolve();
-                });
-        });
-    })
+    .then(() => crawlPage(`https://www.instagram.com/graphql/query/?query_hash=1b84447a4d8b6d6d0426fefb34514485&variables=%7B%22id%22%3A%22${location_id}%22%2C%22first%22%3A50%7D`))
     .then(() => driver.close())
     .then(() => saveData())
     .catch(err => {
