@@ -74,7 +74,11 @@ function importData(dbo, locationId) {
     return bluebird.all(data.map(post => {
         return new Promise(resolve => {
             if(fs.existsSync(program.root+`/vision/${post.id}.json`)) {
-                post.vision = JSON.parse(fs.readFileSync(program.root+`/vision/${post.id}.json`, 'utf8'));
+                try{
+                    post.vision = JSON.parse(fs.readFileSync(program.root+`/vision/${post.id}.json`, 'utf8'));
+                }catch (e) {
+                    post.vision = {};
+                }
             }
 
             if(locationId !== null || locationId !== undefined) {
